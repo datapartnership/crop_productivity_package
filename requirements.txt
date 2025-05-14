@@ -1,0 +1,12 @@
+earthengine-api
+geopandas
+pandas
+numpy
+rasterio
+folium
+matplotlib
+branca
+gee-zonal
+seaborn
+scipy
+google-cloud-storage

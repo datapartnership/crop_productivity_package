@@ -1,0 +1,7 @@
+- Run test on Ethiopia
+- Generalize land cover map ( give options using ESA 2021 for example)
+- Generalize GEE_ETH folder
+- Implement Mean or median national EVI National Median or average to detect start and end growing season 
+- include plot_zscore_maps in main.py 
+- Continue add plotting functions to utils.py after plot_zscore_maps
+- research is EVI a better proxy for agricultural productivity or crop yield?
