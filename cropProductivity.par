@@ -7,28 +7,41 @@ filterStartDate = "2019-01-01"
 filterEndDate = "2024-12-31"
 
 # EVI growing season windows
-sdmegs = "2012-01-01"  # Start date for 10-year mean
-edmegs = "2022-12-31"  # End date for 10-year mean
+# Start date for 10-year mean
+sdmegs = "2012-01-01"  
 
-sdy1egs = "2023-01-01"  # Start date for Year 1
-edy1egs = "2023-12-31"  # End date for Year 1
+# End date for 10-year mean
+edmegs = "2022-12-31"  
 
-sdy2egs = "2024-01-01"  # Start date for Year 2
-edy2egs = "2024-12-31"  # End date for Year 2
+# Start date for Year 1
+sdy1egs = "2023-01-01"  
 
-# Growing season bounds (by month)
-gssm = 4   # April
-gsem = 11  # November
+# End date for Year 1
+edy1egs = "2023-12-31"  
+
+# Start date for Year 2
+sdy2egs = "2024-01-01"  
+
+# End date for Year 2
+edy2egs = "2024-12-31"  
+
+
+# Growing season bounds (by month) ex. 4 for Apr., 11 for Nov.
+gssm = 4   
+gsem = 11 
 
 # Google Cloud Storage bucket name
 bucket_name = "datapartnership-agriculture"
 
 # Input boundary shapefiles
-ADM0 = "../../data/boundaries/ethiopia_adm0.geojson"
-ADM1 = "../../data/boundaries/eth_admbnda_adm1_csa_bofedb_2021.shp"
-ADM2 = "../../data/boundaries/eth_admbnda_adm2_csa_bofedb_2021.shp"
-ADM3 = "../../data/boundaries/eth_admbnda_adm3_csa_bofedb_2021.shp"
+ADM0 = "data/boundaries/eth_admbnda_adm0_csa_bofedb_itos_2021.shp"
+ADM1 = "data/boundaries/eth_admbnda_adm1_csa_bofedb_2021.shp"
+ADM2 = "data/boundaries/eth_admbnda_adm2_csa_bofedb_2021.shp"
+ADM3 = "data/boundaries/eth_admbnda_adm3_csa_bofedb_2021.shp"
 
 # Data directories
 input_dir = "../../data/agriculture/raw/"
 output_dir = "../../data/agriculture/processed/"
+
+# crop map Options: 'DEA' or 'ESAv100'
+cropland = 'DEA' 

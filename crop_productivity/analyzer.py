@@ -53,30 +53,52 @@ class CropProductivityAnalyzer:
                     except ValueError:
                         pass
                     params[key] = value
+        print(params)
         return params
-
+        
     def initialize_gee(self):
         """
         Authenticates and initializes the Google Earth Engine (GEE) environment.
+        Includes a check to confirm successful initialization.
         """
         print("Initializing Google Earth Engine...")
-        ee.Authenticate()
-        ee.Initialize()
 
+        try:
+            # Try to initialize without authenticating (in case already initialized)
+            if not ee.data._initialized:
+                ee.Authenticate()
+                ee.Initialize()
+
+            # Confirm successful initialization
+            if ee.data._initialized:
+                print("Google Earth Engine successfully initialized.")
+            else:
+                raise Exception("Google Earth Engine initialization failed.")
+
+        except Exception as e:
+            print(f"GEE Initialization error: {e}")
+            raise
+        
     def load_boundaries(self):
         """
         Loads ADM0 to ADM3 boundaries as GeoDataFrames.
-        Also extracts the GEE geometry for ADM0.
+        Also exports ADM0 as GeoJSON and extracts the GEE geometry.
         """
         print("Loading boundary shapefiles...")
         self.adm0 = gpd.read_file(self.params["ADM0"])
         self.adm1 = gpd.read_file(self.params["ADM1"])
         self.adm2 = gpd.read_file(self.params["ADM2"])
         self.adm3 = gpd.read_file(self.params["ADM3"])
-        
-        with open(self.params["ADM0"]) as f:
+
+        # Export ADM0 to a standard UTF-8 GeoJSON file
+        geojson_path = "data/boundaries/ethiopia_adm0.geojson"
+        self.adm0.to_file(geojson_path, driver='GeoJSON')
+
+        # Load raw GeoJSON and convert to ee.Geometry
+        with open(geojson_path, encoding='utf-8') as f:
             eth_geometry = json.load(f)
-        self.eth_geometry = ee.Geometry(eth_geometry["features"][0]["geometry"])
+        self.eth_geometry = ee.Geometry(eth_geometry['features'][0]['geometry'])
+
         print("Boundaries loaded and geometry extracted.")
 
     def load_modis_collections(self):
@@ -85,11 +107,17 @@ class CropProductivityAnalyzer:
         Applies cloud and quality masking.
         """
         print("Loading MODIS EVI collections...")
-        start_date = self.params["start_date"]
-        end_date = self.params["end_date"]
+        start_date = ee.Date(self.params["start_date"])
+        end_date = ee.Date(self.params["end_date"])
         
-        terra = ee.ImageCollection("MODIS/061/MOD13Q1")                    .select(["EVI", "SummaryQA", "DetailedQA"])                    .filterDate(start_date, end_date)
-        aqua = ee.ImageCollection("MODIS/061/MYD13Q1")                    .select(["EVI", "SummaryQA", "DetailedQA"])                    .filterDate(start_date, end_date)
+        
+        terra = ee.ImageCollection("MODIS/061/MOD13Q1") \
+            .select(["EVI", "SummaryQA", "DetailedQA"]) \
+            .filterDate(start_date, end_date)
+
+        aqua = ee.ImageCollection("MODIS/061/MYD13Q1") \
+            .select(["EVI", "SummaryQA", "DetailedQA"]) \
+            .filterDate(start_date, end_date)
 
         def bitwiseExtract(value, fromBit, toBit=None):
             if toBit is None:
@@ -104,6 +132,7 @@ class CropProductivityAnalyzer:
             viQualityFlagsS = bitwiseExtract(sqa, 0, 1)
             viQualityFlagsD = bitwiseExtract(dqa, 0, 1)
             viSnowIceFlagsD = bitwiseExtract(dqa, 14)
+            viShadowFlagsD = bitwiseExtract(dqa, 15)
             mask = (
                 viQualityFlagsS.eq(0)
                 .And(viQualityFlagsD.eq(0))
@@ -116,9 +145,11 @@ class CropProductivityAnalyzer:
         mod13q1_QC = terra.map(modisQA_mask)
         myd13q1_QC = aqua.map(modisQA_mask)
 
-        mxd13q1_cleaned = mod13q1_QC.select("EVI").merge(myd13q1_QC.select("EVI"))
-        self.mxd13q1 = mxd13q1_cleaned.sort("system:time_start")
+        merged = mod13q1_QC.select("EVI").merge(myd13q1_QC.select("EVI"))
+        self.mxd13q1 = merged.sort("system:time_start")  # ✅ This is the fix
+
         print("MODIS EVI collection loaded and cleaned.")
+        return self.mxd13q1  # Optional: return for inspection
 
     def apply_crop_mask(self):
         """
@@ -126,18 +157,67 @@ class CropProductivityAnalyzer:
         Stores the result in self.mxd13q1.
         """
         print("Applying DEA cropland mask...")
+        bool_dict = {
+            "0": "ocean",
+            "1": "non_crop",
+            "2": "crop_irrigated",
+            "3": "crop_rainfed",
+        }
 
         dea = ee.ImageCollection(
             "projects/sat-io/open-datasets/DEAF/CROPLAND-EXTENT/mask"
         ).mosaic()
         self.crop_mask = dea.select("b1").rename("crop").clip(self.eth_geometry)
+        
 
         def cropmask(img):
             return img.updateMask(self.crop_mask).clip(self.eth_geometry)
 
         self.mxd13q1 = self.mxd13q1.map(cropmask)
+        # Count number of images in the ImageCollection
+        count = self.mxd13q1.size().getInfo()
+        print(f"Number of images in the collection: {count}")
+        
         print("Cropland mask applied to MODIS collection.")
+        return self.crop_mask, self.mxd13q1
 
+    def apply_esa_2020v100_cropland_mask(self):
+        """
+        Applies ESA WorldCover 10m v100 cropland mask (class 40) to MODIS EVI collection.
+
+        Returns:
+            crop_mask (ee.Image): ESA cropland mask (class 40) clipped to AOI.
+            masked_collection (ee.ImageCollection): MODIS collection masked by ESA cropland extent.
+        """
+        print("Applying ESA v100 2020 WorldCover cropland mask (class 40)...")
+
+        # Load ESA WorldCover 10m land cover map (2020)
+        esa_lc = ee.Image("ESA/WorldCover/v100/2020")
+
+        # Select only pixels classified as Cropland (class value 40)
+        crop_class = 40
+        crop_mask = esa_lc.select("Map").eq(crop_class).rename("crop")
+
+        # Clip to country boundary
+        self.crop_mask = crop_mask.clip(self.eth_geometry)
+
+        # Mask each MODIS image with the ESA cropland mask
+        def apply_mask(image):
+            return image.updateMask(self.crop_mask).clip(self.eth_geometry)
+
+        self.mxd13q1 = self.mxd13q1.map(apply_mask)
+
+        # Get number of remaining images
+        try:
+            count = self.mxd13q1.size().getInfo()
+            print(f"Number of MODIS images after ESA masking: {count}")
+        except Exception as e:
+            print("Could not get image count. Reason:", e)
+
+        print("ESA v100 2020 cropland mask successfully applied.")
+        return self.crop_mask, self.mxd13q1
+    
+    
     def generate_evi_composites(self):
         """
         Generates mean seasonal EVI composites for different years:
@@ -170,7 +250,7 @@ class CropProductivityAnalyzer:
         print("EVI composites generated and stacked.")
         return stacked
 
-    def compute_zonal_statistics(self, image, feature_level="adm1", stat_type="mean", scale=250, output_name="evi_stats", output_dir="GEE_ETH"):
+    def compute_zonal_statistics(self, image, feature_level="adm1", stat_type="mean", scale=10, output_name="evi_stats", output_dir="GEE_UTILS"):
         """
         Computes zonal statistics using the given image over specified boundary level.
 
@@ -195,6 +275,7 @@ class CropProductivityAnalyzer:
         }
 
         target_features = gee_helpers.gpd_to_gee(level_map[feature_level])
+        # Fix starts here
 
         zs = ZonalStats(
             ee_dataset=image,

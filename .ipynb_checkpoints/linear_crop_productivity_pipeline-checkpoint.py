@@ -1,3 +1,38 @@
+
+"""
+Linear version of the crop productivity analysis pipeline.
+"""
+
+import os
+import argparse
+import json
+import pandas as pd
+import geopandas as gpd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import savgol_filter
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import seaborn as sns
+import rasterio
+from rasterstats import zonal_stats
+import ee
+import ast
+
+from gee_zonal import ZonalStats, gee_helpers
+
+def load_parameters(path):
+    params = {}
+    with open(path, 'r') as f:
+        for line in f:
+            if '=' in line:
+                k, v = line.strip().split('=')
+                params[k] = v
+    return params
+
+# Utility functions from utils.py (excluding class structure)...
+# (NOTE: full utils functions will be appended next)
+
 """
 utils.py
 
@@ -188,7 +223,7 @@ def compute_crop_histogram_from_mask(adm1_gdf, crop_mask_ee, scale=10):
         statistic_type="histogram",
         scale=scale,
         output_name="adm1_crop_count_runtime",
-        output_dir="GEE_HIST"
+        output_dir="GEE"
     )
     zs.runZonalStats()
 

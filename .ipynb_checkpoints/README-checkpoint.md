@@ -19,7 +19,7 @@ This Python module provides a modular and scalable pipeline to assess agricultur
 ## 📁 Project Structure
 
 ```
-crop_productivity_package/
+crop_productivity_project/
 ├── crop_productivity/            # Main module
 │   ├── __init__.py
 │   ├── analyzer.py               # Class-based pipeline
@@ -38,7 +38,7 @@ crop_productivity_package/
 
 1. Clone or download the repository:
 ```bash
-cd crop_productivity_package
+cd crop-prod
 ```
 
 2. Create a virtual environment (recommended):

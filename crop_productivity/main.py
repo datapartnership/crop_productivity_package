@@ -5,7 +5,7 @@ Command-line entry point for running the crop productivity analysis pipeline.
 """
 
 import argparse
-from crop_productivity_analyzer import CropProductivityAnalyzer
+from crop_productivity.analyzer import CropProductivityAnalyzer
 
 def main():
     # Set up CLI argument parser
@@ -22,19 +22,52 @@ def main():
     analyzer.initialize_gee()
     analyzer.load_boundaries()
     analyzer.load_modis_collections()
-    analyzer.apply_crop_mask()
+    # Inside main.py, after initializing analyzer and loading MODIS
+    crop_mask_type = analyzer.params.get("cropland", "DEA").strip().upper()
 
+    if crop_mask_type == "ESAV100":
+        masked, mxd13q1 = analyzer.apply_esa_cropland_mask()
+    elif crop_mask_type == "DEA":
+        masked, mxd13q1 = analyzer.apply_crop_mask()
+    else:
+        raise ValueError(f"Unsupported cropland mask type: {crop_mask_type}")
+
+    # Compute zonal statistics Number of crop pixels in each admin region
+    #analyzer.compute_zonal_statistics(
+    #    image=masked,
+    #    feature_level="adm1",
+    #    stat_type="count",
+    #    output_name="adm1_crop_count",
+    #    output_dir=args.output
+    #)
+
+    #mxd13q1_recent = mxd13q1.filterDate(filterStartDate, filterEndDate)
+
+    # Convert your AOI from GeoDataFrame to GEE FeatureCollection
+    #aoi = gee_helpers.gpd_to_gee(analyzer.adm1)
+
+    #zs = ZonalStats(
+    #    ee_dataset=mxd13q1_recent,
+    #    target_features=aoi,
+    #    statistic_type="median",
+    #    scale=250,
+    #    output_name="eth_phenology",
+    #    output_dir="GEE_ETH"
+    #)
+
+    #zs.runZonalStats()
+    
     # Generate seasonal composites
     evi_composites = analyzer.generate_evi_composites()
 
     # Compute zonal statistics
-    analyzer.compute_zonal_statistics(
-        image=evi_composites,
-        feature_level="adm1",
-        stat_type="mean",
-        output_name="evi_composite_stats",
-        output_dir=args.output
-    )
+    #analyzer.compute_zonal_statistics(
+    #    image=evi_composites,
+    #    feature_level="adm1",
+    #    stat_type="mean",
+    #    output_name="evi_composite_stats",
+    #    output_dir=args.output
+    #)
 
     # Compute z-scores and export
     zscore_10yr, _ = analyzer.compute_all_zscores()
